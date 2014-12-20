@@ -4,6 +4,7 @@
 //= require ../actions/github-pulls
 //= require ./github-pulls
 //= require ./github-branch-selector
+//= require ./github-repo-buildpack
 //= require ./github-commit-selector
 //= require ./github-commit
 //= require ./github-pull
@@ -76,6 +77,12 @@ Dashboard.Views.GithubRepo = React.createClass({
 				{selectedPanel === "commits" ? (
 					<div>
 						<Dashboard.Views.GithubBranchSelector
+							ownerLogin={this.props.ownerLogin}
+							repoName={this.props.name}
+							selectedBranchName={selectedBranchName}
+							defaultBranchName={repo ? repo.defaultBranch : null}/>
+
+						<Dashboard.Views.GithubRepoBuildpack
 							ownerLogin={this.props.ownerLogin}
 							repoName={this.props.name}
 							selectedBranchName={selectedBranchName}
