@@ -16,6 +16,8 @@ import (
 	"github.com/flynn/flynn/host/ports"
 	"github.com/flynn/flynn/host/sampi"
 	"github.com/flynn/flynn/host/types"
+	"github.com/flynn/flynn/host/volume"
+	zfsVolume "github.com/flynn/flynn/host/volume/zfs"
 	"github.com/flynn/flynn/pkg/attempt"
 	"github.com/flynn/flynn/pkg/cluster"
 	rpc "github.com/flynn/flynn/pkg/rpcplus/comborpc"
@@ -156,9 +158,17 @@ func runDaemon(args *docopt.Args) {
 	var backend Backend
 	var err error
 
+	// create volume manager
+	// TODO: create minimum viable zpool?
+	volProv, err := zfsVolume.NewProvider("flynn-default")
+	if err != nil {
+		log.Fatalf("unable to create volume backend: %s", err)
+	}
+	vman := volume.NewManager(volProv)
+
 	switch backendName {
 	case "libvirt-lxc":
-		backend, err = NewLibvirtLXCBackend(state, portAlloc, volPath, "/tmp/flynn-host-logs", flynnInit)
+		backend, err = NewLibvirtLXCBackend(state, portAlloc, vman, volPath, "/tmp/flynn-host-logs", flynnInit)
 	default:
 		log.Fatalf("unknown backend %q", backendName)
 	}

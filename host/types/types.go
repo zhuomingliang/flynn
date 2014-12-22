@@ -68,6 +68,7 @@ type ContainerConfig struct {
 	Cmd         []string
 	Env         map[string]string
 	Mounts      []Mount
+	Volumes     []VolumeBinding
 	Ports       []Port
 	WorkingDir  string
 	Uid         int
@@ -83,6 +84,14 @@ type Port struct {
 type Mount struct {
 	Location  string
 	Target    string
+	Writeable bool
+}
+
+type VolumeBinding struct {
+	// Target defines the filesystem path inside the container where the volume will be mounted.
+	Target    string
+	// VolumeID can be thought of as the source path if this were a simple bind-mount.  It is resolved by a VolumeManager.
+	VolumeID  string
 	Writeable bool
 }
 
