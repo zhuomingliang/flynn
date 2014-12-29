@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/flynn/flynn/Godeps/_workspace/src/github.com/flynn/go-sql"
+	"github.com/flynn/flynn/Godeps/_workspace/src/github.com/flynn/pq"
+	"github.com/flynn/flynn/Godeps/_workspace/src/github.com/johto/notifyutils/notifydispatcher"
 	"github.com/flynn/flynn/discoverd/client"
 )
 
@@ -21,7 +23,7 @@ type Queue struct {
 	discoverd *discoverd.Client
 
 	mtx          sync.Mutex
-	l            *listener
+	l            *notifydispatcher.NotifyDispatcher
 	stopListener chan struct{}
 	subscribers  map[string]map[chan *Event]struct{}
 	subscribeMtx sync.RWMutex
@@ -88,16 +90,13 @@ func (q *Queue) Wait(name string) chan error {
 			q.waitMtx.Unlock()
 			close(ch)
 		}
-		notify, err := q.listener().listen(name)
+		notify := make(chan *pq.Notification)
+		err := q.listener().Listen(name, notify)
 		if err != nil {
 			handleErr(err)
 			return
 		}
 		for n := range notify {
-			if n.err != nil {
-				handleErr(n.err)
-				return
-			}
 			ch <- nil
 		}
 	}()
@@ -113,11 +112,11 @@ func (q *Queue) unlockJobsOfDeadWorkers() {
 	q.DB.Exec(fmt.Sprintf("UPDATE %s SET locked_at = NULL, locked_by = NULL WHERE locked_by NOT IN (%s)", q.Table, strings.Join(workers, ", ")))
 }
 
-func (q *Queue) listener() *listener {
+func (q *Queue) listener() *notifydispatcher.NotifyDispatcher {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 	if q.l == nil {
-		q.l = newListener(q.DB)
+		q.l = notifydispatcher.NewNotifyDispatcher(pq.NewListener("", 10*time.Second, time.Minute, nil))
 	}
 	return q.l
 }
@@ -187,7 +186,8 @@ func (q *Queue) Unsubscribe(name string, ch chan *Event) {
 
 func (q *Queue) startEventListener() error {
 	channel := q.Table + "_events"
-	notify, err := q.listener().listen(channel)
+	notify := make(chan *pq.Notification)
+	err := q.listener().Listen(channel, notify)
 	if err != nil {
 		return err
 	}
@@ -196,11 +196,7 @@ func (q *Queue) startEventListener() error {
 		for {
 			select {
 			case n := <-notify:
-				if n.err != nil {
-					q.listener().unlisten(channel, notify)
-					return
-				}
-				idName := strings.SplitN(n.extra, ":", 2)
+				idName := strings.SplitN(n.Extra, ":", 2)
 				id, err := strconv.ParseInt(idName[0], 10, 64)
 				if err != nil {
 					fmt.Println("queue: could not parse event id:", err)
@@ -208,7 +204,7 @@ func (q *Queue) startEventListener() error {
 				}
 				go q.publishEvent(idName[1], id)
 			case <-q.stopListener:
-				q.listener().unlisten(channel, notify)
+				q.listener().Unlisten(channel, notify)
 				return
 			}
 		}
